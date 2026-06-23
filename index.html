@@ -860,18 +860,16 @@ async function onAuthChange(user){
   }
 }
 
-async function login(){
-  const email = v('login-email');
-  const pass  = v('login-pass');
-  if(!email||!pass){ toast('Ingresa email y contraseña','error'); return; }
-  showLoader();
-  hide('login-error');
-  try{
-    await APP.auth.signInWithEmailAndPassword(email, pass);
-  }catch(e){
-    hideLoader();
-    show('login-error');
-    document.getElementById('login-error').textContent = firebaseError(e);
+async function login() {
+  ...
+  try {
+    await APP.auth.signInWithEmailAndPassword(email, pass)
+    // AGREGAR ESTAS 2 LÍNEAS:
+    hide('login-screen')
+    show('app')
+  } catch(e) {
+    show('login-error')
+    ...
   }
 }
 
