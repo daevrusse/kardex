@@ -12,7 +12,7 @@
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
-:root{
+:root{h
   --primary:#2563eb;--primary-dark:#1d4ed8;--primary-light:#dbeafe;
   --success:#16a34a;--danger:#dc2626;--warning:#d97706;--info:#0891b2;
   --bg:#f1f5f9;--surface:#ffffff;--border:#e2e8f0;--text:#1e293b;
@@ -861,14 +861,16 @@ async function onAuthChange(user){
 }
 
 async function login() {
-  ...
+  const email = v('login-email'), pass = v('login-pass');
+      if(!email||!pass){ toast('Ingresa email y contraseña','error'); return; }
+      showLoader();
   try {
     await APP.auth.signInWithEmailAndPassword(email, pass)
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app').style.display = 'block';
   } catch(e) {
     show('login-error')
-    ...
+    hideLoader();
   
   }
 }
