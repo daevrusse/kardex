@@ -866,6 +866,10 @@ async function login() {
     await APP.auth.signInWithEmailAndPassword(email, pass)
     hide('login-screen')   // ← AGREGAR
     show('app')            // ← AGREGAR
+  } catch(e) {
+    show('login-error')
+    ...
+  
   }
 }
 
