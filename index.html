@@ -757,7 +757,7 @@ try{ fbConfig = JSON.parse(localStorage.getItem(FB_KEY)); }catch(e){}
 // Al cargar la página, si ya hay config guardada, inicializar Firebase
 const savedConfig = localStorage.getItem('kardex_fb_config');
 if (savedConfig && firebase.apps.length === 0) {
-  firebase.initializeApp(JSON.parse(savedConfig));
+    initFirebase(JSON.parse(savedConfig));
 }
 
 function initFirebase(cfg){
