@@ -2001,7 +2001,7 @@ function exportPeriodExcel(){
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`productos_${todayStr()}.csv`; a.click();
     toast('Exportado como CSV','success');
   }
-  function exportProductsPDF(){
+function exportProductsPDF(){
     if(!APP.products||!APP.products.length){ toast('No hay productos para exportar','warning'); return; }
     const catMap={}; APP.categories.forEach(c=>catMap[c.id]=c.name);
     const {jsPDF}=window.jspdf;
