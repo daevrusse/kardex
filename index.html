@@ -62,6 +62,8 @@ input,select,textarea{font-family:inherit;font-size:14px;outline:none}
 .btn-full{width:100%;justify-content:center}
 .btn-warning{background:var(--warning);color:#fff}
 .btn-info{background:var(--info);color:#fff}
+  .export-menu-item{display:block;width:100%;padding:8px 16px;background:none;border:none;text-align:left;cursor:pointer;font-size:13px;color:var(--text);white-space:nowrap}
+  .export-menu-item:hover{background:var(--primary-light);color:var(--primary)}
 
 .setup-steps{display:flex;gap:8px;margin-bottom:24px;justify-content:center}
 .setup-step{width:28px;height:4px;border-radius:2px;background:var(--border)}
@@ -461,7 +463,7 @@ select.form-control{appearance:none;background-image:url("data:image/svg+xml,%3C
             <select class="form-control" id="prod-filter-cat" onchange="renderProducts()" style="min-width:140px">
               <option value="">Todas las categorías</option>
             </select>
-            <button class="btn btn-primary btn-sm" onclick="openProductForm()">+ Nuevo</button>
+            <button class="btn btn-primary btn-sm" onclick="openProductForm()">+ Nuevo</button>            <div class="export-dropdown" style="position:relative;display:inline-block">              <button class="btn btn-outline btn-sm" onclick="toggleExportMenu('prod-export-menu')">&#8595; Exportar</button>              <div id="prod-export-menu" style="display:none;position:absolute;right:0;top:100%;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.12);z-index:100;min-width:160px;padding:4px 0">            <div class="export-dropdown" style="position:relative;display:inline-block">
           </div>
         </div>
         <div class="table-wrap">
@@ -1971,6 +1973,57 @@ function exportHistoryExcel(){
   if(!APP._lastHistory){ toast('Carga el historial primero','warning'); return; }
   const data=[['Fecha','Tipo','Producto','Cantidad','Unidad','Costo Unit.','Total','Referencia','Usuario'],
     ...APP._lastHistory.map(m=>[fmtDate(m.date),MOV_TYPES[m.type]?.label||m.type,m.productName,m.quantity,m.productUnit||'',m.unitCost,m.totalCost,m.reference||'',m.userName||''])];
+  // =============================================
+  // EXPORT PRODUCTOS
+  // =============================================
+  function toggleExportMenu(id){
+      const m=document.getElementById(id);
+      if(!m) return;
+      const vis=m.style.display==='block';
+      document.querySelectorAll('[id$="-export-menu"]').forEach(el=>el.style.display='none');
+      if(!vis) m.style.display='block';
+      if(!vis) setTimeout(()=>document.addEventListener('click',function h(e){if(!e.target.closest('.export-dropdown')){m.style.display='none';document.removeEventListener('click',h);}},true),10);
+  }
+  function exportProductsXLSX(){
+      if(!APP.products||!APP.products.length){ toast('No hay productos para exportar','warning'); return; }
+      const catMap={}; APP.categories.forEach(c=>catMap[c.id]=c.name);
+      const headers=['Codigo','Nombre','Descripcion','Categoria','Unidad','Stock Actual','Stock Minimo','Stock Maximo','Precio Estandar','Costo Promedio','Estado'];
+      const rows=APP.products.map(p=>[p.code||'',p.name||'',p.description||'',catMap[p.categoryId]||'',p.unit||'und',p.currentStock||0,p.minStock||0,p.maxStock||0,p.standardPrice||0,p.avgCost||0,p.isActive!==false?'Activo':'Inactivo']);
+      const wb=XLSX.utils.book_new();
+      const ws=XLSX.utils.aoa_to_sheet([headers,...rows]);
+      ws['!cols']=[{wch:12},{wch:30},{wch:30},{wch:20},{wch:8},{wch:12},{wch:12},{wch:12},{wch:14},{wch:14},{wch:10}];
+      XLSX.utils.book_append_sheet(wb,ws,'Productos');
+      XLSX.writeFile(wb,`productos_${todayStr()}.xlsx`);
+      toast('Exportado como Excel','success');
+  }
+  function exportProductsCSV(){
+      if(!APP.products||!APP.products.length){ toast('No hay productos para exportar','warning'); return; }
+      const catMap={}; APP.categories.forEach(c=>catMap[c.id]=c.name);
+      const headers=['Codigo','Nombre','Descripcion','Categoria','Unidad','Stock Actual','Stock Minimo','Stock Maximo','Precio Estandar','Costo Promedio','Estado'];
+      const rows=APP.products.map(p=>[p.code||'',p.name||'',p.description||'',catMap[p.categoryId]||'',p.unit||'und',p.currentStock||0,p.minStock||0,p.maxStock||0,p.standardPrice||0,p.avgCost||0,p.isActive!==false?'Activo':'Inactivo']);
+      const csv=[headers,...rows].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+      const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`productos_${todayStr()}.csv`; a.click();
+      toast('Exportado como CSV','success');
+  }
+  function exportProductsPDF(){
+      if(!APP.products||!APP.products.length){ toast('No hay productos para exportar','warning'); return; }
+      const catMap={}; APP.categories.forEach(c=>catMap[c.id]=c.name);
+      const {jsPDF}=window.jspdf;
+      const doc=new jsPDF({orientation:'landscape'});
+      doc.setFontSize(14); doc.text(`Catalogo de Productos - ${APP.settings.company||'KardexPro'}`,14,14);
+      doc.setFontSize(10); doc.text(`Exportado: ${new Date().toLocaleDateString('es')}`,14,22);
+      doc.autoTable({
+            startY:28,
+            head:[['Codigo','Nombre','Categoria','Unidad','Stock','Min','Precio Est.','Estado']],
+            body:APP.products.map(p=>[p.code||'-',p.name,catMap[p.categoryId]||'-',p.unit||'und',fmt(p.currentStock||0,2),fmt(p.minStock||0,2),cur()+' '+fmt(p.standardPrice||0),p.isActive!==false?'Activo':'Inactivo']),
+            styles:{fontSize:8},
+            headStyles:{fillColor:[37,99,235]},
+            alternateRowStyles:{fillColor:[239,246,255]}
+      });
+      doc.save(`productos_${todayStr()}.pdf`);
+      toast('Exportado como PDF','success');
+  }
   const ws=XLSX.utils.aoa_to_sheet(data);
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,'Historial');
