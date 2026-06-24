@@ -12,7 +12,7 @@
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
-:root{h
+:root{
   --primary:#2563eb;--primary-dark:#1d4ed8;--primary-light:#dbeafe;
   --success:#16a34a;--danger:#dc2626;--warning:#d97706;--info:#0891b2;
   --bg:#f1f5f9;--surface:#ffffff;--border:#e2e8f0;--text:#1e293b;
@@ -754,12 +754,6 @@ const FB_KEY = 'kardex_fb_config';
 let fbConfig = null;
 try{ fbConfig = JSON.parse(localStorage.getItem(FB_KEY)); }catch(e){}
 
-// Al cargar la página, si ya hay config guardada, inicializar Firebase
-const savedConfig = localStorage.getItem('kardex_fb_config');
-if (savedConfig && firebase.apps.length === 0) {
-    initFirebase(JSON.parse(savedConfig));
-}
-
 function initFirebase(cfg){
   if(firebase.apps.length === 0) firebase.initializeApp(cfg);
   APP.db   = firebase.firestore();
@@ -825,11 +819,12 @@ async function setupStep3(){
     batch.set(APP.db.collection('config').doc('settings'), setupData.company);
     await batch.commit();
     localStorage.setItem(FB_KEY, JSON.stringify(setupData.fb));
-    toast('Sistema configurado correctamente','success');
+hideLoader();
+        toast('Sistema configurado correctamente','success');
   }catch(e){
     hideLoader();
     toast(firebaseError(e),'error');
-  }
+      }
 }
 
 // =============================================
@@ -856,18 +851,20 @@ async function onAuthChange(user){
     showApp();
   }catch(e){
     toast('Error al cargar perfil: '+e.message,'error');
-    await logout();
+    if(APP.auth) await APP.auth.signOut().catch(()=>{});
+        APP.currentUser=null; APP.userProfile=null;
+      showLogin();
   }
 }
 
 async function login() {
-  const email = v('login-email'), pass = v('login-pass');
+  hide('login-error');
+    const email = v('login-email'), pass = v('login-pass');
       if(!email||!pass){ toast('Ingresa email y contraseña','error'); return; }
       showLoader();
   try {
     await APP.auth.signInWithEmailAndPassword(email, pass)
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
+    hideLoader();
   } catch(e) {
     show('login-error')
     hideLoader();
@@ -1393,9 +1390,9 @@ async function loadHistory(){
     let q = APP.db.collection('movements').orderBy('date','desc');
     if(from) q=q.where('date','>=',firebase.firestore.Timestamp.fromDate(new Date(from+'T00:00:00')));
     if(to)   q=q.where('date','<=',firebase.firestore.Timestamp.fromDate(new Date(to+'T23:59:59')));
-    if(type) q=q.where('type','==',type);
     const snap = await q.limit(500).get();
-    const movs = snap.docs.map(d=>({id:d.id,...d.data()}));
+    let movs = snap.docs.map(d=>({id:d.id,...d.data()}));
+        if(type) movs = movs.filter(m=>m.type===type);
     if(!movs.length){ tbody.innerHTML='<tr><td colspan="9" class="text-center text-muted" style="padding:24px">Sin movimientos en el período</td></tr>'; return; }
     tbody.innerHTML = movs.map(m=>{
       const info = MOV_TYPES[m.type]||{label:m.type,color:'badge-gray'};
