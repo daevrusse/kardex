@@ -464,6 +464,8 @@ select.form-control{appearance:none;background-image:url("data:image/svg+xml,%3C
               <option value="">Todas las categorías</option>
             </select>
             <button class="btn btn-primary btn-sm" onclick="openProductForm()">+ Nuevo</button>
+            <button class="btn btn-success btn-sm" onclick="importProductsFile()">&#8593; Importar</button>
+            <input type="file" id="import-products-input" accept=".csv,.xlsx,.xls" style="display:none" onchange="processImportFile(this)">
             <div class="export-dropdown" style="position:relative;display:inline-block">
               <button class="btn btn-outline btn-sm" onclick="toggleExportMenu('prod-export-menu')">&#8595; Exportar</button>
               <div id="prod-export-menu" style="display:none;position:absolute;right:0;top:100%;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.12);z-index:100;min-width:160px;padding:4px 0">
@@ -2131,6 +2133,210 @@ const HARDCODED_FB = {
     toast('Error al inicializar Firebase: '+e.message,'error');
   }
 })();
+
+// =============================================
+// IMPORT PRODUCTOS (CSV / XLSX)
+// =============================================
+function importProductsFile(){
+  document.getElementById('import-products-input').value='';
+  document.getElementById('import-products-input').click();
+}
+
+async function processImportFile(input){
+  const file = input.files[0];
+  if(!file) return;
+  showLoader();
+  try{
+    let rows = [];
+    if(file.name.toLowerCase().endsWith('.csv')){
+      rows = await parseCsvFile(file);
+    } else {
+      rows = await parseXlsxFile(file);
+    }
+    if(!rows || rows.length < 2){ toast('El archivo no tiene datos o el formato es incorrecto','error'); return; }
+    const headers = rows[0].map(h => String(h||'').toLowerCase().trim());
+    const dataRows = rows.slice(1).filter(r => r.some(c => c !== '' && c !== null && c !== undefined));
+    if(!dataRows.length){ toast('No se encontraron filas de datos','error'); return; }
+    showImportPreview(headers, dataRows);
+  }catch(e){ toast('Error al leer archivo: '+e.message,'error'); }
+  finally{ hideLoader(); }
+}
+
+function parseCsvFile(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = function(e){
+      try{
+        const text = e.target.result;
+        const lines2 = text.split(/\r?\n/);
+        const rows2 = lines2.map(function(line){
+          const cells = [];
+          let current = '';
+          let inQuotes = false;
+          for(let i = 0; i < line.length; i++){
+            const ch = line[i];
+            if(ch === '"'){
+              if(inQuotes && line[i+1] === '"'){ current += '"'; i++; }
+              else { inQuotes = !inQuotes; }
+            } else if(ch === ',' && !inQuotes){
+              cells.push(current.trim());
+              current = '';
+            } else {
+              current += ch;
+            }
+          }
+          cells.push(current.trim());
+          return cells;
+        }).filter(function(r){ return r.length > 1 || r[0] !== ''; });
+        resolve(rows2);
+      }catch(err){ reject(err); }
+    };
+    reader.onerror = function(){ reject(new Error('No se pudo leer el archivo')); };
+    reader.readAsText(file, 'UTF-8');
+  });
+}
+
+function parseXlsxFile(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = function(e){
+      try{
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, {type:'array'});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows3 = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+        resolve(rows3);
+      }catch(err){ reject(err); }
+    };
+    reader.onerror = function(){ reject(new Error('No se pudo leer el archivo')); };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function showImportPreview(headers, dataRows){
+  const fieldMap = {
+    codigo:     headers.findIndex(function(h){ return h.includes('codigo') || h.includes('codigo') || h === 'code'; }),
+    nombre:     headers.findIndex(function(h){ return h.includes('nombre') || h === 'name'; }),
+    descripcion:headers.findIndex(function(h){ return h.includes('descripcion') || h.includes('descripci'); }),
+    categoria:  headers.findIndex(function(h){ return h.includes('categoria') || h.includes('categor'); }),
+    unidad:     headers.findIndex(function(h){ return h.includes('unidad') || h === 'unit'; }),
+    stockMin:   headers.findIndex(function(h){ return h.includes('minimo') || h.includes('m') && h.includes('nimo') || h === 'stock minimo'; }),
+    stockMax:   headers.findIndex(function(h){ return h.includes('maximo') || h === 'stock maximo'; }),
+    precio:     headers.findIndex(function(h){ return h.includes('estandar') || h.includes('precio'); }),
+  };
+  if(fieldMap.codigo < 0 || fieldMap.nombre < 0){
+    toast('El archivo debe tener columnas "Codigo" y "Nombre"','error');
+    return;
+  }
+  const preview = dataRows.slice(0,5).map(function(r){ return {
+    codigo:   r[fieldMap.codigo]||'',
+    nombre:   r[fieldMap.nombre]||'',
+    categoria:fieldMap.categoria>=0 ? r[fieldMap.categoria]||'' : '',
+    unidad:   fieldMap.unidad>=0    ? r[fieldMap.unidad]||'und' : 'und',
+    stockMin: fieldMap.stockMin>=0  ? r[fieldMap.stockMin]||0  : 0,
+    precio:   fieldMap.precio>=0    ? r[fieldMap.precio]||0    : 0,
+  }; });
+  const total = dataRows.length;
+  const previewRows = preview.map(function(p){
+    return '<tr><td style="padding:5px 8px;border-bottom:1px solid var(--border)">'+p.codigo+'</td>'+
+    '<td style="padding:5px 8px;border-bottom:1px solid var(--border)">'+p.nombre+'</td>'+
+    '<td style="padding:5px 8px;border-bottom:1px solid var(--border)">'+p.categoria+'</td>'+
+    '<td style="padding:5px 8px;border-bottom:1px solid var(--border)">'+p.unidad+'</td>'+
+    '<td style="padding:5px 8px;text-align:right;border-bottom:1px solid var(--border)">'+p.stockMin+'</td>'+
+    '<td style="padding:5px 8px;text-align:right;border-bottom:1px solid var(--border)">'+p.precio+'</td></tr>';
+  }).join('');
+  const previewHTML = '<div style="margin-bottom:12px">'+
+    '<p style="color:var(--text-muted);font-size:13px">Se encontraron <strong>'+total+'</strong> producto(s). Vista previa (primeros 5):</p>'+
+    '<div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse">'+
+    '<thead><tr style="background:var(--bg)">'+
+    '<th style="padding:6px 8px;text-align:left;border-bottom:1px solid var(--border)">Código</th>'+
+    '<th style="padding:6px 8px;text-align:left;border-bottom:1px solid var(--border)">Nombre</th>'+
+    '<th style="padding:6px 8px;text-align:left;border-bottom:1px solid var(--border)">Categoría</th>'+
+    '<th style="padding:6px 8px;text-align:left;border-bottom:1px solid var(--border)">Unidad</th>'+
+    '<th style="padding:6px 8px;text-align:right;border-bottom:1px solid var(--border)">Mín</th>'+
+    '<th style="padding:6px 8px;text-align:right;border-bottom:1px solid var(--border)">Precio</th>'+
+    '</tr></thead><tbody>'+previewRows+'</tbody></table></div>'+
+    '<p style="margin-top:10px;font-size:12px;color:var(--text-muted)">Productos con el mismo código serán <strong>actualizados</strong>. Nuevos se crearán con stock inicial 0.</p>'+
+    '</div>';
+  openModal(
+    '↑ Importar Productos',
+    previewHTML,
+    '<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
+    '<button class="btn btn-primary" onclick="confirmImport()">Importar '+total+' producto(s)</button>'
+  );
+  window._importPending = { headers: headers, dataRows: dataRows, fieldMap: fieldMap };
+}
+
+async function confirmImport(){
+  if(!window._importPending){ toast('No hay datos pendientes de importar','error'); return; }
+  const headers3 = window._importPending.headers;
+  const dataRows3 = window._importPending.dataRows;
+  const fieldMap3 = window._importPending.fieldMap;
+  closeModal();
+  showLoader();
+  let created = 0, updated = 0;
+  try{
+    const catMap3 = {};
+    APP.categories.forEach(function(c){ catMap3[c.name.toLowerCase().trim()] = c.id; });
+    const codeMap3 = {};
+    APP.products.forEach(function(p){ codeMap3[(p.code||'').toLowerCase().trim()] = p.id; });
+    const ops3 = [];
+    for(let ri = 0; ri < dataRows3.length; ri++){
+      const row3 = dataRows3[ri];
+      const codigo3  = String(row3[fieldMap3.codigo]||'').trim();
+      const nombre3  = String(row3[fieldMap3.nombre]||'').trim();
+      if(!codigo3 || !nombre3) continue;
+      let categoryId3 = '';
+      if(fieldMap3.categoria >= 0){
+        const catName3 = String(row3[fieldMap3.categoria]||'').trim();
+        if(catName3){
+          const catKey3 = catName3.toLowerCase();
+          if(catMap3[catKey3]){
+            categoryId3 = catMap3[catKey3];
+          } else {
+            const newCatRef3 = APP.db.collection('categories').doc();
+            ops3.push(APP.db.collection('categories').doc(newCatRef3.id).set({ name: catName3, description:'', createdAt: now() }));
+            catMap3[catKey3] = newCatRef3.id;
+            categoryId3 = newCatRef3.id;
+          }
+        }
+      }
+      const data3 = {
+        code:          codigo3,
+        name:          nombre3,
+        description:   fieldMap3.descripcion>=0 ? String(row3[fieldMap3.descripcion]||'').trim() : '',
+        categoryId:    categoryId3,
+        unit:          fieldMap3.unidad>=0 ? String(row3[fieldMap3.unidad]||'und').trim()||'und' : 'und',
+        minStock:      fieldMap3.stockMin>=0  ? parseFloat(row3[fieldMap3.stockMin])||0  : 0,
+        maxStock:      fieldMap3.stockMax>=0  ? parseFloat(row3[fieldMap3.stockMax])||0  : 0,
+        standardPrice: fieldMap3.precio>=0    ? parseFloat(row3[fieldMap3.precio])||0    : 0,
+        isActive:      true,
+      };
+      const codeKey3 = codigo3.toLowerCase();
+      if(codeMap3[codeKey3]){
+        ops3.push(APP.db.collection('products').doc(codeMap3[codeKey3]).update(data3));
+        updated++;
+      } else {
+        data3.currentStock = 0;
+        data3.avgCost = 0;
+        data3.createdAt = now();
+        ops3.push(APP.db.collection('products').add(data3));
+        created++;
+      }
+    }
+    await Promise.all(ops3);
+    await loadCategoriesCache();
+    await loadProductsCache();
+    renderProducts();
+    window._importPending = null;
+    toast('Importación completada: '+created+' creados, '+updated+' actualizados','success');
+  }catch(e3){
+    toast('Error al importar: '+e3.message,'error');
+  }finally{
+    hideLoader();
+  }
+}
+
 </script>
 
 <!-- PRINT STYLES -->
